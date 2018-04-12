@@ -4,7 +4,7 @@ import secret_data # file that contains OAuth credentials
 import json
 import webbrowser
 from bs4 import BeautifulSoup
-
+import sqlite3
 
 CLIENT_ID = secret_data.CLIENTid
 CLIENT_SECRET = secret_data.CLIENTsecret
@@ -78,7 +78,7 @@ def get_google_data(baseurl, params):
 	links = []
 	next_links = []
 	descriptions_list = []
-	
+	url_list = []
 	# make this a function
 	google_page = google_make_request_and_cache(baseurl, params)
 
@@ -109,12 +109,20 @@ def get_google_data(baseurl, params):
 		google_descriptions_dict[link] = descriptions_list[n]
 		n += 1
 	
-	print((links))
-	print(len(descriptions_list))
-	print(len(google_descriptions_dict))
+	# DB Table: (1)Link title (2)# of words in title (3)Desc (4)# of words in desc (5)link
+	page_url_sections = page_soup.find_all(class_ = 'r')
+	for page_urls in page_url_sections:
+		url_list.append('https://www.google.com' + page_urls.find('a').get('href'))
 
-	print(google_descriptions_dict.keys())
-	return []
+	link_words = []
+	for link in links:
+		link_words.append(len(link.split()))
+
+	desc_words = []
+	for desc in descriptions_list:
+		desc_words.append(len(desc.split()))
+
+	return (links, link_words, descriptions_list, desc_words, url_list)
 	
 
 def spotify_make_request_and_cache(baseurl, params):
@@ -147,11 +155,98 @@ def spotify_make_request_and_cache(baseurl, params):
 		
 		return CACHE_DICTION[unique_ident]
 
-spotify_baseurl = 'https://api.spotify.com/v1/search?'
-spotify_params_dict = {'q':'Happy', 'type':'track', 'limit':10}
-# spotify_make_request_and_cache(spotify_baseurl, spotify_params_dict)
+def create_tables():
+	conn = sqlite3.connect('google_spotify.db')
+	cur = conn.cursor()
+	statement = '''
+			DROP TABLE IF EXISTS 'Google';
+		'''
+	cur.execute(statement)
+
+	statement = '''
+			DROP TABLE IF EXISTS 'Spotify';
+		'''
+	cur.execute(statement)
+	conn.commit()
+	# DB Table: (1)Link title (2)# of words in title (3)Desc (4)# of words in desc (5)link
+	create_tables_statement = """
+			CREATE TABLE 'Google' (
+			'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
+			'LinkTitle' Text NOT NULL,
+			'TitleCount' INTEGER NOT NULL,
+			'Description' TEXT NOT NULL,
+			'DescriptionCount' INTEGER NOT NULL,
+			'URL' TEXT NOT NULL
+			);
+			CREATE TABLE 'Spotify' (
+			'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
+			'TrackName' TEXT NOT NULL,
+			'Artist' INTEGER NOT NULL,
+			'SpotifyId' TEXT NOT NULL,
+			'Popularity' INTEGER NOT NULL,
+			'SpotifyLink' TEXT NOT NULL
+			)
+			"""
+	cur.executescript(create_tables_statement)
+	conn.commit()
+	conn.close()
+	return None
 
 google_baseurl = 'https://www.google.com/search?'
 google_params_dict = {'q':'welcome+happy+help'}
-get_google_data(google_baseurl, google_params_dict)
 
+def write_google_table():
+	(a,b,c,d,e) = get_google_data(google_baseurl, google_params_dict)
+
+	conn = sqlite3.connect('google_spotify.db')
+	cur = conn.cursor()
+	i = 0
+	while i<9:
+		insertion = (None, a[i], b[i], c[i], d[i], e[i])
+		insert_statement = """
+		INSERT INTO Google
+		VALUES (?,?,?,?,?,?)
+		"""
+		i += 1
+		cur.execute(insert_statement, insertion)
+	
+	conn.commit()
+	return None
+
+spotify_baseurl = 'https://api.spotify.com/v1/search?'
+spotify_params_dict = {'q':'Happy', 'type':'track', 'limit':10}
+
+def write_spotify_table():
+	the_spotify_result = spotify_make_request_and_cache(spotify_baseurl, spotify_params_dict)
+	track_names = []
+	artists = []
+	spotify_ids = []
+	popularities = []
+	spotify_links = []
+
+	for thing in the_spotify_result['tracks']['items']:
+		artists.append(thing['artists'][0]['name'])
+		track_names.append(thing['name'])
+		spotify_ids.append(thing['id'])
+		popularities.append(thing['popularity'])
+		spotify_links.append(thing['href'])
+
+	conn = sqlite3.connect('google_spotify.db')
+	cur = conn.cursor()
+	i = 0
+	while i<10:
+		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], spotify_links[i])
+		insert_statement = """
+		INSERT INTO Spotify
+		VALUES (?,?,?,?,?,?)
+		"""
+		i += 1
+		cur.execute(insert_statement, insertion)
+	
+	conn.commit()
+
+	return None
+
+create_tables()
+write_google_table()
+write_spotify_table()
