@@ -5,6 +5,7 @@ import json
 import webbrowser
 from bs4 import BeautifulSoup
 import sqlite3
+import unittest
 
 CLIENT_ID = secret_data.CLIENTid
 CLIENT_SECRET = secret_data.CLIENTsecret
@@ -245,7 +246,7 @@ def create_tables():
 	conn.close()
 	return None
 
-user_inputs = input("What to search in Google? ").split()
+user_inputs = input("What to search in Google? (2 terms) ").split()
 google_params_dict = {'q':''}
 google_search_string = ''
 s = '+'
@@ -261,7 +262,12 @@ def write_google_table():
 	cur = conn.cursor()
 	i = 0
 	while i<100:
-		insertion = (None, a[i], b[i], c[i], d[i], e[i])
+		insertion = (None, 
+			a[i], 
+			b[i], 
+			c[i], 
+			d[i], 
+			e[i])
 		insert_statement = """
 		INSERT INTO Google
 		VALUES (?,?,?,?,?,?)
@@ -270,6 +276,7 @@ def write_google_table():
 		cur.execute(insert_statement, insertion)
 	
 	conn.commit()
+	conn.close()
 	return None
 
 def write_spotify_table():
@@ -292,16 +299,20 @@ def write_spotify_table():
 	conn = sqlite3.connect('google_spotify.db')
 	cur = conn.cursor()
 	i = 0
-	while i<25:
-		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
-		insert_statement = """
-		INSERT INTO Spotify
-		VALUES (?,?,?,?,?,?,?)
-		"""
-		i += 1
-		cur.execute(insert_statement, insertion)
-	
-	conn.commit()
+	try:
+		while i<25:
+			insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
+			insert_statement = """
+			INSERT INTO Spotify
+			VALUES (?,?,?,?,?,?,?)
+			"""
+			i += 1
+			cur.execute(insert_statement, insertion)
+		conn.commit()
+		conn.close()
+	except:
+		pass
+
 	return None
 
 def google_words():
@@ -328,6 +339,10 @@ def google_words():
 
 	return search_words[:10]
 
+######################################
+# END OF FUNCTION DEFINITIONS
+######################################
+
 # create_tables()
 # write_google_table()
 
@@ -340,39 +355,81 @@ def google_words():
 # 	spotify_params_dict['q'] = str(term)
 # 	write_spotify_table()
 
-# Write SQL Statement for primary-foreign key relationship
+# # Write SQL Statement for primary-foreign key relationship
+# conn = sqlite3.connect('google_spotify.db')
+# cur = conn.cursor()
+# statement = '''
+# 	SELECT Artist
+# 	FROM Spotify
+# 	GROUP BY Artist
+# 	'''
+# cur.execute(statement)
+# key_artists = []
+# for thing in cur.fetchall():
+# 	key_artists.append(thing[0])
+
+# i = 0
+# while i < len(key_artists): 
+# 	artists_insertion = (None, key_artists[i])
+# 	insert_artists_statement = '''
+# 		INSERT INTO SpotifyArtists
+# 		VALUES (?,?)
+# 		'''
+# 	cur.execute(insert_artists_statement, artists_insertion)
+# 	i += 1
+# 	conn.commit()
+
+# e = 1
+# while e < len(key_artists):
+# 	update_statement = '''
+# 	UPDATE Spotify
+# 	SET Artist = '''
+# 	update_statement += str(e)
+# 	update_statement += '''
+# 	WHERE Artist = '''
+# 	update_statement += "'" + key_artists[e-1] + "'"
+# 	e += 1
+# 	cur.execute(update_statement)
+# 	conn.commit()
+# conn.close()
+
+# User preference statement: random / popular
+user_preference = input("What songs do you want in your playlist? random or popular? ")
+
+# Create & Return Playlist
+random_playlist_statement = '''
+	SELECT TrackName, SpotifyArtists.ArtistName
+	FROM Spotify
+	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
+	ORDER BY RANDOM()
+	LIMIT 10
+'''
+
+popular_playlist_statement = '''
+	SELECT TrackName, Artist
+	FROM Spotify
+	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
+	ORDER BY Popularity DESC
+	LIMIT 10
+'''
+
+song_list = []
 conn = sqlite3.connect('google_spotify.db')
 cur = conn.cursor()
-statement = '''
-	SELECT Artist
-	FROM Spotify
-	GROUP BY Artist
-	'''
-cur.execute(statement)
-key_artists = []
-for thing in cur.fetchall():
-	key_artists.append(thing[0])
+if user_preference == 'random':
+	cur.execute(random_playlist_statement)
+	song_list = cur.fetchall()
+elif user_preference == 'popular':
+	cur.execute(popular_playlist_statement)
+	song_list = cur.fetchall()
 
-i = 0
-while i < len(key_artists): 
-	artists_insertion = (None, key_artists[i])
-	insert_artists_statement = '''
-		INSERT INTO SpotifyArtists
-		VALUES (?,?)
-		'''
-	cur.execute(insert_artists_statement, artists_insertion)
-	i += 1
-	conn.commit()
+x = 1
+for song in song_list:
+	print('')
 
-e = 1
-while e < len(key_artists):
-	update_statement = '''
-	UPDATE Spotify
-	SET Artist = '''
-	update_statement += str(e)
-	update_statement += '''
-	WHERE Artist = '''
-	update_statement += "'" + key_artists[e-1] + "'"
-	e += 1
-	cur.execute(update_statement)
-	conn.commit()
+
+
+
+######################################
+# UNIT TESTING
+######################################
