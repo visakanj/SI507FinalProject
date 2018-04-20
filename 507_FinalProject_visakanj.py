@@ -38,12 +38,6 @@ except:
 
 # Take user input(s) >> form params dict >> make unique url >> request Google search >> scrape
 
-def form_google_params(search_terms):
-	# search_terms = [ ]
-
-	# return params dict
-	pass
-
 def params_unique_combination(baseurl, params):
 	alphabetized_keys = sorted(params.keys())
 	res = []
@@ -72,6 +66,51 @@ def google_make_request_and_cache(baseurl, params):
 		fw.close()
 		return CACHE_DICTION_GOOGLE[unique_ident]
 
+def get_more_google_data_cache(url):
+	global header
+	header = {'User-Agent': 'Google_Project'}
+	unique_ident = url
+
+	if unique_ident in CACHE_DICTION_GOOGLE:
+		print("Getting cached data...")
+		return CACHE_DICTION_GOOGLE[unique_ident]
+
+	else:
+		print("Making a request for new data...")
+		resp = requests.get(unique_ident, headers=header)
+		CACHE_DICTION_GOOGLE[unique_ident] = resp.text
+
+		dumped_json_cache = json.dumps(CACHE_DICTION_GOOGLE)
+		fw = open(CACHE_GOOGLE,"w")
+		fw.write(dumped_json_cache)
+		fw.close()
+		return CACHE_DICTION_GOOGLE[unique_ident]
+
+def get_more_google_data(url):
+	google_page = get_more_google_data_cache(url)
+	links = []
+	descriptions_list = []
+	url_list = []
+
+	page_soup = BeautifulSoup(google_page, 'html.parser')
+	content = page_soup.find_all(class_='r')
+	
+	for link in content:
+		link_title = link.text
+		if "Images" not in link_title:
+			links.append(link_title)
+
+	descriptions = page_soup.find_all(class_ = 'st')
+
+	for description in descriptions:
+		descriptions_list.append(description.text)
+
+	page_url_sections = page_soup.find_all(class_ = 'r')
+	for page_urls in page_url_sections:
+		url_list.append('https://www.google.com' + page_urls.find('a').get('href'))
+
+	return (links, descriptions_list, url_list)
+
 def get_google_data(baseurl, params):
 	google_descriptions_dict = {}
 	page_count = -19
@@ -97,23 +136,27 @@ def get_google_data(baseurl, params):
 	# make function through here
 
 	next_link_section = page_soup.find_all('a')
-	while page_count < -10:
+	while page_count < -9:
 		next_link = (next_link_section)[page_count].get('href')
 		next_links.append(next_link)
 		page_count += 1
 
-	# Request for each link in next_links
-
-	n = 0
-	for link in links:
-		google_descriptions_dict[link] = descriptions_list[n]
-		n += 1
-	
-	# DB Table: (1)Link title (2)# of words in title (3)Desc (4)# of words in desc (5)link
 	page_url_sections = page_soup.find_all(class_ = 'r')
 	for page_urls in page_url_sections:
 		url_list.append('https://www.google.com' + page_urls.find('a').get('href'))
 
+	# Request for each link in next_links
+	for link in next_links:
+		(more_titles, more_descriptions, more_urls) = get_more_google_data('http://www.google.com' + link)
+
+		for title in more_titles:
+			links.append(title)
+		for descr in more_descriptions:
+			descriptions_list.append(descr)
+		for url in more_urls:
+			url_list.append(url)
+	
+	# DB Table: (1)Link title (2)# of words in title (3)Desc (4)# of words in desc (5)link
 	link_words = []
 	for link in links:
 		link_words.append(len(link.split()))
@@ -122,7 +165,7 @@ def get_google_data(baseurl, params):
 	for desc in descriptions_list:
 		desc_words.append(len(desc.split()))
 
-	return (links, link_words, descriptions_list, desc_words, url_list)
+	return (links, link_words, descriptions_list, desc_words, url_list, next_links)
 	
 
 def spotify_make_request_and_cache(baseurl, params):
@@ -167,6 +210,11 @@ def create_tables():
 			DROP TABLE IF EXISTS 'Spotify';
 		'''
 	cur.execute(statement)
+	
+	statement = '''
+			DROP TABLE IF EXISTS 'SpotifyArtists'
+		'''
+	cur.execute(statement)
 	conn.commit()
 	# DB Table: (1)Link title (2)# of words in title (3)Desc (4)# of words in desc (5)link
 	create_tables_statement = """
@@ -184,7 +232,12 @@ def create_tables():
 			'Artist' INTEGER NOT NULL,
 			'SpotifyId' TEXT NOT NULL,
 			'Popularity' INTEGER NOT NULL,
+			'Explicit' TEXT NOT NULL,
 			'SpotifyLink' TEXT NOT NULL
+			);
+			CREATE TABLE 'SpotifyArtists' (
+			'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
+			'ArtistName' TEXT NOT NULL
 			)
 			"""
 	cur.executescript(create_tables_statement)
@@ -192,16 +245,22 @@ def create_tables():
 	conn.close()
 	return None
 
+user_inputs = input("What to search in Google? ").split()
+google_params_dict = {'q':''}
+google_search_string = ''
+s = '+'
+google_search_string = s.join(user_inputs)
+google_params_dict['q'] = str(google_search_string)
+
 google_baseurl = 'https://www.google.com/search?'
-google_params_dict = {'q':'welcome+happy+help'}
 
 def write_google_table():
-	(a,b,c,d,e) = get_google_data(google_baseurl, google_params_dict)
+	(a,b,c,d,e,f) = get_google_data(google_baseurl, google_params_dict)
 
 	conn = sqlite3.connect('google_spotify.db')
 	cur = conn.cursor()
 	i = 0
-	while i<9:
+	while i<100:
 		insertion = (None, a[i], b[i], c[i], d[i], e[i])
 		insert_statement = """
 		INSERT INTO Google
@@ -213,15 +272,13 @@ def write_google_table():
 	conn.commit()
 	return None
 
-spotify_baseurl = 'https://api.spotify.com/v1/search?'
-spotify_params_dict = {'q':'Happy', 'type':'track', 'limit':10}
-
 def write_spotify_table():
 	the_spotify_result = spotify_make_request_and_cache(spotify_baseurl, spotify_params_dict)
 	track_names = []
 	artists = []
 	spotify_ids = []
 	popularities = []
+	explicits = []
 	spotify_links = []
 
 	for thing in the_spotify_result['tracks']['items']:
@@ -229,24 +286,93 @@ def write_spotify_table():
 		track_names.append(thing['name'])
 		spotify_ids.append(thing['id'])
 		popularities.append(thing['popularity'])
+		explicits.append(thing['explicit'])
 		spotify_links.append(thing['href'])
 
 	conn = sqlite3.connect('google_spotify.db')
 	cur = conn.cursor()
 	i = 0
-	while i<10:
-		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], spotify_links[i])
+	while i<25:
+		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
 		insert_statement = """
 		INSERT INTO Spotify
-		VALUES (?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?)
 		"""
 		i += 1
 		cur.execute(insert_statement, insertion)
 	
 	conn.commit()
-
 	return None
 
-create_tables()
-write_google_table()
-write_spotify_table()
+def google_words():
+	(a,b,c,d,e,f) = get_google_data(google_baseurl, google_params_dict)
+	word_dict = {}
+
+	for descr in c:
+		descr = descr.split()
+		for word in descr:
+			if word not in word_dict:
+				word_dict[word] = 1
+			elif word in word_dict:
+				word_dict[word] += 1
+
+	sorted_keys = sorted(word_dict, key=word_dict.get)
+	index = -1
+	search_words = []
+	pointless_words = ['the', 'to', 'and', 'of', 'is', 'for', '-', 'a']
+	while index > -20:
+		word = sorted_keys[index]
+		if word[0] != '.' and word not in pointless_words:
+			search_words.append(word)
+		index -= 1
+
+	return search_words[:10]
+
+# create_tables()
+# write_google_table()
+
+# spotify_baseurl = 'https://api.spotify.com/v1/search?'
+# spotify_params_dict = {'q':'', 'type':'track', 'limit':25}
+
+# spotify_search_terms = google_words()[:5]
+
+# for term in spotify_search_terms:
+# 	spotify_params_dict['q'] = str(term)
+# 	write_spotify_table()
+
+# Write SQL Statement for primary-foreign key relationship
+conn = sqlite3.connect('google_spotify.db')
+cur = conn.cursor()
+statement = '''
+	SELECT Artist
+	FROM Spotify
+	GROUP BY Artist
+	'''
+cur.execute(statement)
+key_artists = []
+for thing in cur.fetchall():
+	key_artists.append(thing[0])
+
+i = 0
+while i < len(key_artists): 
+	artists_insertion = (None, key_artists[i])
+	insert_artists_statement = '''
+		INSERT INTO SpotifyArtists
+		VALUES (?,?)
+		'''
+	cur.execute(insert_artists_statement, artists_insertion)
+	i += 1
+	conn.commit()
+
+e = 1
+while e < len(key_artists):
+	update_statement = '''
+	UPDATE Spotify
+	SET Artist = '''
+	update_statement += str(e)
+	update_statement += '''
+	WHERE Artist = '''
+	update_statement += "'" + key_artists[e-1] + "'"
+	e += 1
+	cur.execute(update_statement)
+	conn.commit()
