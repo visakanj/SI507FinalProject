@@ -8,6 +8,7 @@ import sqlite3
 import unittest
 import plotly.plotly as py
 import plotly.graph_objs as go
+import webbrowser
 
 CLIENT_ID = secret_data.CLIENTid
 CLIENT_SECRET = secret_data.CLIENTsecret
@@ -236,7 +237,7 @@ def create_tables():
 			'SpotifyId' TEXT NOT NULL,
 			'Popularity' INTEGER NOT NULL,
 			'Explicit' TEXT NOT NULL,
-			'SpotifyLink' TEXT NOT NULL
+			'SpotifyLink' TEXT
 			);
 			CREATE TABLE 'SpotifyArtists' (
 			'Id' INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -247,15 +248,6 @@ def create_tables():
 	conn.commit()
 	conn.close()
 	return None
-
-user_inputs = input("What to search in Google? (2 terms) ").split()
-google_params_dict = {'q':''}
-google_search_string = ''
-s = '+'
-google_search_string = s.join(user_inputs)
-google_params_dict['q'] = str(google_search_string)
-
-google_baseurl = 'https://www.google.com/search?'
 
 def write_google_table():
 	(a,b,c,d,e,f) = get_google_data(google_baseurl, google_params_dict)
@@ -301,19 +293,16 @@ def write_spotify_table():
 	conn = sqlite3.connect('google_spotify.db')
 	cur = conn.cursor()
 	i = 0
-	try:
-		while i<25:
-			insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
-			insert_statement = """
-			INSERT INTO Spotify
-			VALUES (?,?,?,?,?,?,?)
-			"""
-			i += 1
-			cur.execute(insert_statement, insertion)
-		conn.commit()
-		conn.close()
-	except:
-		pass
+	while i<25:
+		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
+		insert_statement = """
+		INSERT INTO Spotify
+		VALUES (?,?,?,?,?,?,?)
+		"""
+		i += 1
+		cur.execute(insert_statement, insertion)
+	conn.commit()
+	conn.close()
 
 	return None
 
@@ -368,6 +357,15 @@ def google_words_dict():
 ######################################
 # END OF FUNCTION DEFINITIONS
 ######################################
+
+user_inputs = input("What to search in Google? (3 terms) ").split()
+google_params_dict = {'q':''}
+google_search_string = ''
+s = '+'
+google_search_string = s.join(user_inputs)
+google_params_dict['q'] = str(google_search_string)
+
+google_baseurl = 'https://www.google.com/search?'
 
 # create_tables()
 # write_google_table()
@@ -424,7 +422,7 @@ user_preference = input("What songs do you want in your playlist? random or popu
 
 # Create & Return Playlist
 random_playlist_statement = '''
-	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit
+	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit, SpotifyLink
 	FROM Spotify
 	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
 	ORDER BY RANDOM()
@@ -432,7 +430,7 @@ random_playlist_statement = '''
 '''
 
 popular_playlist_statement = '''
-	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit
+	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit, SpotifyLink
 	FROM Spotify
 	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
 	ORDER BY Popularity DESC
@@ -451,13 +449,16 @@ elif user_preference == 'popular':
 	song_list = cur.fetchall()
 conn.close()
 
+print("Here's your Google Search Playlist!")
 x = 1
 for song in song_list:
-	print('(' + str(x) + ') ' + song[0] + ' - ' + song[1])
+	if song[5] == 'None':
+		print('(' + str(x) + ') ' + song[0] + ' - ' + song[1] + '(preview unavailable)')
+	else:
+		print('(' + str(x) + ') ' + song[0] + ' - ' + song[1])
+	
+	playlist_dict[x] = song[5]
 	x += 1
-
-# ASK USER TO CHOOSE DISPLAY
-
 
 ######################################
 # GAUGE CHART - PLAYLIST AVG POPULARITY
@@ -579,6 +580,7 @@ def gauge_chart():
 	fig = {"data": [base_chart, meter_chart],
 		   "layout": layout}
 	py.plot(fig, filename='Your Google Playlist')
+	return None
 
 ######################################
 # PIE CHART - EXPLICIT
@@ -600,6 +602,7 @@ def pie_chart():
 							   line=dict(color='#000000', width=2)))
 
 	py.plot([trace], filename='How Explicit is Your Playlist?')
+	return None
 
 ######################################
 # BUBBLE CHART - GOOGLE SEARCH WORDS
@@ -635,10 +638,51 @@ def bubble_chart():
 
 	data = [trace0]
 	py.plot(data, filename='Most Frequent Words From Google')
+	return None
 
 ######################################
 # SPOTIFY PREVIEW
 ######################################
+# Ask user which song to preview
+def spotify_preview():
+	global playlist_dict
+	user_preview_input = input("Which song to preview? (1 - 25) ")
+
+	if int(user_preview_input) < 26 and int(user_preview_input) > 0:
+		webbrowser.open(playlist_dict[int(user_preview_input)], new=1, autoraise=True)
+	else:
+		print("Please input a number 1 - 25.")
+
+	return None
+
+######################################
+# ASK USER TO CHOOSE DISPLAY
+######################################
+print("\nHere are your playlist analysis options:")
+print("\tA - Should I share this playlist? Check how high your playlist's average popularity is.")
+print("\tB - Is Mom with you? Check how much of the playlist is explicit.")
+print("\tC - How did I get here? Check the most common words in your Google results.")
+print("\tD - Preview a song from the playlist!")
+
+user_display = input("\nHow would you like to analyze your playlist? ('A', 'B', 'C', 'D', 'quit') ")
+while user_display != 'quit':
+	if user_display == 'A':
+		gauge_chart()
+	elif user_display == 'B':
+		pie_chart()
+	elif user_display == 'C':
+		bubble_chart()
+	elif user_display == 'D':
+		spotify_preview()
+	elif user_display == 'quit':
+		exit()
+
+	user_display = input("\nHow would you like to analyze your playlist? ('A', 'B', 'C', 'D', 'quit') ")
+	print("\nHere are your playlist analysis options:")
+	print("\tA - Should I share this playlist? Check how high your playlist's average popularity is.")
+	print("\tB - Is Mom with you? Check how much of the playlist is explicit.")
+	print("\tC - How did I get here? Check the most common words in your Google results.")
+	print("\tD - Preview a song from the playlist!")
 
 
 
