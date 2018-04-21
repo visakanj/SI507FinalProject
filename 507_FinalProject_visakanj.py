@@ -6,6 +6,8 @@ import webbrowser
 from bs4 import BeautifulSoup
 import sqlite3
 import unittest
+import plotly.plotly as py
+import plotly.graph_objs as go
 
 CLIENT_ID = secret_data.CLIENTid
 CLIENT_SECRET = secret_data.CLIENTsecret
@@ -294,7 +296,7 @@ def write_spotify_table():
 		spotify_ids.append(thing['id'])
 		popularities.append(thing['popularity'])
 		explicits.append(thing['explicit'])
-		spotify_links.append(thing['href'])
+		spotify_links.append(thing['preview_url'])
 
 	conn = sqlite3.connect('google_spotify.db')
 	cur = conn.cursor()
@@ -338,6 +340,30 @@ def google_words():
 		index -= 1
 
 	return search_words[:10]
+
+def google_words_dict():
+	(a,b,c,d,e,f) = get_google_data(google_baseurl, google_params_dict)
+	word_dict = {}
+
+	for descr in c:
+		descr = descr.split()
+		for word in descr:
+			if word not in word_dict:
+				word_dict[word] = 1
+			elif word in word_dict:
+				word_dict[word] += 1
+
+	pointless_words = ['the', 'to', 'and', 'of', 'is', 'for', '-', 'a', '...']
+	for word in pointless_words:
+		if word in word_dict:
+			try:
+				del word_dict[word]
+			except KeyError:
+				pass
+	
+	sorted_dict = sorted(word_dict.items(), key=lambda x:x[1], reverse = True)
+
+	return sorted_dict
 
 ######################################
 # END OF FUNCTION DEFINITIONS
@@ -398,22 +424,23 @@ user_preference = input("What songs do you want in your playlist? random or popu
 
 # Create & Return Playlist
 random_playlist_statement = '''
-	SELECT TrackName, SpotifyArtists.ArtistName
+	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit
 	FROM Spotify
 	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
 	ORDER BY RANDOM()
-	LIMIT 10
+	LIMIT 25
 '''
 
 popular_playlist_statement = '''
-	SELECT TrackName, Artist
+	SELECT TrackName, SpotifyArtists.ArtistName, Spotify.Id, Popularity, Explicit
 	FROM Spotify
 	JOIN SpotifyArtists ON SpotifyArtists.Id = Spotify.Artist
 	ORDER BY Popularity DESC
-	LIMIT 10
+	LIMIT 25
 '''
 
 song_list = []
+playlist_dict = {}
 conn = sqlite3.connect('google_spotify.db')
 cur = conn.cursor()
 if user_preference == 'random':
@@ -422,10 +449,196 @@ if user_preference == 'random':
 elif user_preference == 'popular':
 	cur.execute(popular_playlist_statement)
 	song_list = cur.fetchall()
+conn.close()
 
 x = 1
 for song in song_list:
-	print('')
+	print('(' + str(x) + ') ' + song[0] + ' - ' + song[1])
+	x += 1
+
+# ASK USER TO CHOOSE DISPLAY
+
+
+######################################
+# GAUGE CHART - PLAYLIST AVG POPULARITY
+######################################
+def gauge_chart():
+	global song_list
+	pop_sum = 0
+	for song in song_list:
+		pop_sum += song[3]
+
+	playlist_pop_avg = int(pop_sum/25)
+
+	base_chart = {
+		"values": [40, 10, 10, 10, 10, 10, 10],
+		"labels": ["-", "0", "20", "40", "60", "80", "100"],
+		"domain": {"x": [0, .48]},
+		"marker": {
+			"colors": [
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)',
+				'rgb(255, 255, 255)'
+			],
+			"line": {
+				"width": 1
+			}
+		},
+		"name": "Gauge",
+		"hole": .4,
+		"type": "pie",
+		"direction": "clockwise",
+		"rotation": 108,
+		"showlegend": False,
+		"hoverinfo": "none",
+		"textinfo": "label",
+		"textposition": "outside"
+	}
+
+	meter_chart = {
+		"values": [50, 10, 10, 10, 10, 10],
+		"labels": ["", "Meh", "Alright", "Fun", "Hype", "Lit!"],
+		"marker": {
+			'colors': [
+				'rgb(255, 255, 255)',
+				'rgb(232,226,202)',
+				'rgb(226,210,172)',
+				'rgb(223,189,139)',
+				'rgb(223,162,103)',
+				'rgb(226,126,64)'
+			]
+		},
+		"domain": {"x": [0, 0.48]},
+		"name": "Gauge",
+		"hole": .3,
+		"type": "pie",
+		"direction": "clockwise",
+		"rotation": 90,
+		"showlegend": False,
+		"textinfo": "label",
+		"textposition": "inside",
+		"hoverinfo": "none"
+	}
+
+	layout = {
+		'xaxis': {
+			'showticklabels': False,
+			'autotick': False,
+			'showgrid': False,
+			'zeroline': False,
+		},
+		'yaxis': {
+			'showticklabels': False,
+			'autotick': False,
+			'showgrid': False,
+			'zeroline': False,
+		},
+		'shapes': [
+			{
+				'type': 'path',
+				'path': '',
+				'fillcolor': 'rgba(44, 160, 101, 0.5)',
+				'line': {
+					'width': 0.5
+				},
+				'xref': 'paper',
+				'yref': 'paper'
+			}
+		],
+		'annotations': [
+			{
+				'xref': 'paper',
+				'yref': 'paper',
+				'x': 0.23,
+				'y': 0.45,
+				'text': '',
+				'showarrow': False
+			}
+		]
+	}
+
+	if playlist_pop_avg < 20:
+		layout['shapes'][0]['path'] = 'M 0.235 0.5 L 0.06 0.62 L 0.245 0.5 Z'
+	elif playlist_pop_avg >= 20 and playlist_pop_avg < 40:
+		layout['shapes'][0]['path'] = 'M 0.235 0.5 L 0.18 0.62 L 0.245 0.5 Z'
+	elif playlist_pop_avg >= 40 and playlist_pop_avg < 60:
+		layout['shapes'][0]['path'] = 'M 0.235 0.5 L 0.24 0.62 L 0.245 0.5 Z'
+	elif playlist_pop_avg >= 60 and playlist_pop_avg < 80:
+		layout['shapes'][0]['path'] = 'M 0.235 0.5 L 0.32 0.65 L 0.245 0.5 Z'
+	elif playlist_pop_avg >= 80:
+		layout['shapes'][0]['path'] = 'M 0.235 0.5 L 0.45 0.62 L 0.245 0.5 Z'
+
+	layout['annotations'][0]['text'] = str(playlist_pop_avg)
+
+	base_chart['marker']['line']['width'] = 0
+
+	fig = {"data": [base_chart, meter_chart],
+		   "layout": layout}
+	py.plot(fig, filename='Your Google Playlist')
+
+######################################
+# PIE CHART - EXPLICIT
+######################################
+def pie_chart():
+	global song_list
+	explicit_count = 0
+	for song in song_list:
+		explicit_count += int(song[4])
+
+	labels = ['Clean', 'Explicit']
+	values = [25 - explicit_count, explicit_count]
+	colors = ['#D0F9B1', '#E1396C']
+
+	trace = go.Pie(labels=labels, values=values,
+				   hoverinfo='label+percent', textinfo='value', 
+				   textfont=dict(size=20),
+				   marker=dict(colors=colors, 
+							   line=dict(color='#000000', width=2)))
+
+	py.plot([trace], filename='How Explicit is Your Playlist?')
+
+######################################
+# BUBBLE CHART - GOOGLE SEARCH WORDS
+######################################
+def bubble_chart():
+	# get frequencies top 5 words
+	top_words = google_words_dict()[:7]
+	words = []
+	for word in top_words:
+		words.append(word[0])
+	
+	word_sizes = []
+	for word in top_words:
+		word_sizes.append(word[1])
+	
+	bubble_text = []
+	i = 0
+	while i < 7:
+		bubble_text.append('"{}"<br>{}x'.format(words[i], word_sizes[i]))
+		i += 1
+
+	trace0 = go.Scatter(
+		x=[1, 2, 3, 4, 5, 6],
+		y=[2, 2, 2, 2, 2, 2],
+		text=bubble_text,
+		mode='markers',
+		marker=dict(
+			color=['rgb(93, 164, 214)', 'rgb(255, 144, 14)', 'rgb(44, 160, 101)', 'rgb(255, 65, 54)', 'rgb(93, 164, 214)', 'rgb(255, 144, 14)'],
+			opacity=[1, 0.8, 0.7, 0.6, 0.55, 0.45],
+			size=[3*word_sizes[0],3*word_sizes[1],3*word_sizes[2],3*word_sizes[3],3*word_sizes[4],3*word_sizes[5]],
+		)
+	)
+
+	data = [trace0]
+	py.plot(data, filename='Most Frequent Words From Google')
+
+######################################
+# SPOTIFY PREVIEW
+######################################
 
 
 
