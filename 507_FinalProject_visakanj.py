@@ -367,58 +367,61 @@ google_params_dict['q'] = str(google_search_string)
 
 google_baseurl = 'https://www.google.com/search?'
 
-# create_tables()
-# write_google_table()
+create_tables()
+write_google_table()
 
-# spotify_baseurl = 'https://api.spotify.com/v1/search?'
-# spotify_params_dict = {'q':'', 'type':'track', 'limit':25}
+spotify_baseurl = 'https://api.spotify.com/v1/search?'
+spotify_params_dict = {'q':'', 'type':'track', 'limit':25}
 
-# spotify_search_terms = google_words()[:5]
+spotify_search_terms = google_words()[:5]
 
-# for term in spotify_search_terms:
-# 	spotify_params_dict['q'] = str(term)
-# 	write_spotify_table()
+for term in spotify_search_terms:
+	spotify_params_dict['q'] = str(term)
+	write_spotify_table()
 
-# # Write SQL Statement for primary-foreign key relationship
-# conn = sqlite3.connect('google_spotify.db')
-# cur = conn.cursor()
-# statement = '''
-# 	SELECT Artist
-# 	FROM Spotify
-# 	GROUP BY Artist
-# 	'''
-# cur.execute(statement)
-# key_artists = []
-# for thing in cur.fetchall():
-# 	key_artists.append(thing[0])
+# Write SQL Statement for primary-foreign key relationship
+conn = sqlite3.connect('google_spotify.db')
+cur = conn.cursor()
+statement = '''
+	SELECT Artist
+	FROM Spotify
+	GROUP BY Artist
+	'''
+cur.execute(statement)
+key_artists = []
+for thing in cur.fetchall():
+	key_artists.append(thing[0])
 
-# i = 0
-# while i < len(key_artists): 
-# 	artists_insertion = (None, key_artists[i])
-# 	insert_artists_statement = '''
-# 		INSERT INTO SpotifyArtists
-# 		VALUES (?,?)
-# 		'''
-# 	cur.execute(insert_artists_statement, artists_insertion)
-# 	i += 1
-# 	conn.commit()
+i = 0
+while i < len(key_artists): 
+	artists_insertion = (None, key_artists[i])
+	insert_artists_statement = '''
+		INSERT INTO SpotifyArtists
+		VALUES (?,?)
+		'''
+	cur.execute(insert_artists_statement, artists_insertion)
+	i += 1
+	conn.commit()
 
-# e = 1
-# while e < len(key_artists):
-# 	update_statement = '''
-# 	UPDATE Spotify
-# 	SET Artist = '''
-# 	update_statement += str(e)
-# 	update_statement += '''
-# 	WHERE Artist = '''
-# 	update_statement += "'" + key_artists[e-1] + "'"
-# 	e += 1
-# 	cur.execute(update_statement)
-# 	conn.commit()
-# conn.close()
+e = 1
+while e < len(key_artists):
+	update_statement = '''
+	UPDATE Spotify
+	SET Artist = '''
+	update_statement += str(e)
+	update_statement += '''
+	WHERE Artist = '''
+	update_statement += "'" + key_artists[e-1] + "'"
+	e += 1
+	cur.execute(update_statement)
+	conn.commit()
+conn.close()
 
 # User preference statement: random / popular
 user_preference = input("What songs do you want in your playlist? random or popular? ")
+if user_preference not in ['random', 'popular']:
+	print("Please choose: 'random' or 'popular'. ")
+	user_preference = input("What songs do you want in your playlist? random or popular? ")
 
 # Create & Return Playlist
 random_playlist_statement = '''
@@ -676,6 +679,8 @@ while user_display != 'quit':
 		spotify_preview()
 	elif user_display == 'quit':
 		exit()
+	else:
+		print("Please input 'A', 'B', 'C', 'D', or 'quit'. ")
 
 	user_display = input("\nHow would you like to analyze your playlist? ('A', 'B', 'C', 'D', 'quit') ")
 	print("\nHere are your playlist analysis options:")
@@ -684,9 +689,86 @@ while user_display != 'quit':
 	print("\tC - How did I get here? Check the most common words in your Google results.")
 	print("\tD - Preview a song from the playlist!")
 
-
-
-
 ######################################
 # UNIT TESTING
 ######################################
+print ("\n\n**********")
+
+class TestDataAccess(unittest.TestCase):
+	
+	def test_google_data(self):
+		test_google_baseurl = 'https://www.google.com/search?'
+		test_google_params_dict = {'q':'happy+welcome+new'}
+		(A, B, C, D, E, F) = get_google_data(test_google_baseurl, test_google_params_dict)
+		
+		self.assertTrue(len(A) > 0)
+		self.assertTrue(len(B) > 0)
+		self.assertTrue(len(C) > 0)
+		self.assertTrue(len(D) > 0)
+		self.assertTrue(len(E) > 0)
+		self.assertTrue(len(F) > 0)
+		
+		self.assertEqual(len(A), len(B))
+		self.assertEqual(len(C), len(D))
+
+	def test_spotify_data(self):
+		test_spotify_baseurl = 'https://api.spotify.com/v1/search?'
+		test_spotify_params_dict = {'q':'happy', 'type':'track', 'limit':3}
+		test_spotify_result = spotify_make_request_and_cache(test_spotify_baseurl, test_spotify_params_dict)
+
+		self.assertNotEqual(test_spotify_result, None)
+
+class TestDatabase(unittest.TestCase):
+	
+	def test_google_database_gen(self):
+		conn = sqlite3.connect('google_spotify.db')
+		cur = conn.cursor()
+		check_statement = '''
+		SELECT COUNT(*)
+		FROM Google
+		'''
+		cur.execute(check_statement)
+		check_val = cur.fetchone()[0]
+		conn.close()
+
+		self.assertTrue(check_val > 0)
+		self.assertEqual(check_val, 100)
+
+	def test_spotify_database(self):
+		conn = sqlite3.connect('google_spotify.db')
+		cur = conn.cursor()
+		check_statement = '''
+		SELECT COUNT(*)
+		FROM Spotify
+		'''
+		cur.execute(check_statement)
+		check_val = cur.fetchone()[0]
+		conn.close()
+
+		self.assertTrue(check_val > 0)
+		self.assertEqual(check_val, 125)
+
+	def test_spotifyartists_database(self):
+		conn = sqlite3.connect('google_spotify.db')
+		cur = conn.cursor()
+		check_statement = '''
+		SELECT COUNT(*)
+		FROM SpotifyArtists
+		'''
+		cur.execute(check_statement)
+		check_val = cur.fetchone()[0]
+		conn.close()
+
+		self.assertTrue(check_val > 0)
+
+class TestDataProcessing(unittest.TestCase):
+
+	def test_data_processing(self):
+		self.assertTrue(len(song_list) != 0)
+		self.assertEqual(len(song_list), 25)
+	
+######################################
+if __name__ == "__main__":
+	unittest.main(verbosity=2)
+
+
