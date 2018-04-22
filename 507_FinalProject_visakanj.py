@@ -256,19 +256,21 @@ def write_google_table():
 	cur = conn.cursor()
 	i = 0
 	while i<100:
-		insertion = (None, 
-			a[i], 
-			b[i], 
-			c[i], 
-			d[i], 
-			e[i])
-		insert_statement = """
-		INSERT INTO Google
-		VALUES (?,?,?,?,?,?)
-		"""
-		i += 1
-		cur.execute(insert_statement, insertion)
-	
+		try:
+			insertion = (None, 
+				a[i], 
+				b[i], 
+				c[i], 
+				d[i], 
+				e[i])
+			insert_statement = """
+			INSERT INTO Google
+			VALUES (?,?,?,?,?,?)
+			"""
+			i += 1
+			cur.execute(insert_statement, insertion)
+		except:
+			i += 1
 	conn.commit()
 	conn.close()
 	return None
@@ -294,13 +296,16 @@ def write_spotify_table():
 	cur = conn.cursor()
 	i = 0
 	while i<25:
-		insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
-		insert_statement = """
-		INSERT INTO Spotify
-		VALUES (?,?,?,?,?,?,?)
-		"""
-		i += 1
-		cur.execute(insert_statement, insertion)
+		try:
+			insertion = (None, track_names[i], artists[i], spotify_ids[i], popularities[i], explicits[i], spotify_links[i])
+			insert_statement = """
+			INSERT INTO Spotify
+			VALUES (?,?,?,?,?,?,?)
+			"""
+			i += 1
+			cur.execute(insert_statement, insertion)
+		except:
+			i += 1
 	conn.commit()
 	conn.close()
 
@@ -383,14 +388,23 @@ for term in spotify_search_terms:
 conn = sqlite3.connect('google_spotify.db')
 cur = conn.cursor()
 statement = '''
+	SELECT Id, Artist
+	FROM Spotify
+	'''
+cur.execute(statement)
+all_artists_list = cur.fetchall()
+
+artist_statement = '''
 	SELECT Artist
 	FROM Spotify
 	GROUP BY Artist
 	'''
-cur.execute(statement)
+cur.execute(artist_statement)
 key_artists = []
 for thing in cur.fetchall():
 	key_artists.append(thing[0])
+
+artist_dict = {}
 
 i = 0
 while i < len(key_artists): 
@@ -400,25 +414,24 @@ while i < len(key_artists):
 		VALUES (?,?)
 		'''
 	cur.execute(insert_artists_statement, artists_insertion)
+	artist_dict[key_artists[i]] = i+1
 	i += 1
 	conn.commit()
 
-e = 1
-while e < len(key_artists):
+for track in all_artists_list:
 	update_statement = '''
 	UPDATE Spotify
 	SET Artist = '''
-	update_statement += str(e)
+	update_statement += str(artist_dict[track[1]])
 	update_statement += '''
-	WHERE Artist = '''
-	update_statement += "'" + key_artists[e-1] + "'"
-	e += 1
+	WHERE Spotify.Id = '''
+	update_statement += str(track[0])
 	cur.execute(update_statement)
 	conn.commit()
 conn.close()
 
 # User preference statement: random / popular
-user_preference = input("What songs do you want in your playlist? random or popular? ")
+user_preference = input("\nWhat songs do you want in your playlist? random or popular? ")
 if user_preference not in ['random', 'popular']:
 	print("Please choose: 'random' or 'popular'. ")
 	user_preference = input("What songs do you want in your playlist? random or popular? ")
@@ -455,8 +468,8 @@ conn.close()
 print("Here's your Google Search Playlist!")
 x = 1
 for song in song_list:
-	if song[5] == 'None':
-		print('(' + str(x) + ') ' + song[0] + ' - ' + song[1] + '(preview unavailable)')
+	if song[5] == None:
+		print('(' + str(x) + ') ' + song[0] + ' - ' + song[1] + ' (preview unavailable)')
 	else:
 		print('(' + str(x) + ') ' + song[0] + ' - ' + song[1])
 	
@@ -652,7 +665,11 @@ def spotify_preview():
 	user_preview_input = input("Which song to preview? (1 - 25) ")
 
 	if int(user_preview_input) < 26 and int(user_preview_input) > 0:
-		webbrowser.open(playlist_dict[int(user_preview_input)], new=1, autoraise=True)
+		try:
+			webbrowser.open(playlist_dict[int(user_preview_input)], new=1, autoraise=True)
+		except:
+			print("Sorry, no preview available.")
+
 	else:
 		print("Please input a number 1 - 25.")
 
@@ -732,7 +749,7 @@ class TestDatabase(unittest.TestCase):
 		conn.close()
 
 		self.assertTrue(check_val > 0)
-		self.assertEqual(check_val, 100)
+		self.assertTrue(check_val < 101)
 
 	def test_spotify_database(self):
 		conn = sqlite3.connect('google_spotify.db')
@@ -746,7 +763,7 @@ class TestDatabase(unittest.TestCase):
 		conn.close()
 
 		self.assertTrue(check_val > 0)
-		self.assertEqual(check_val, 125)
+		self.assertTrue(check_val < 126 and check_val > 99)
 
 	def test_spotifyartists_database(self):
 		conn = sqlite3.connect('google_spotify.db')
